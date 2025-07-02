@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TechFlow Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title-section">
+                <h1>TechFlow Assistant</h1>
+                <div class="status-indicator" id="statusIndicator">
+                    <div class="status-dot offline" id="statusDot"></div>
+                    <span class="status-text" id="statusText">Connecting...</span>
+                </div>
+            </div>
+            <p>Ask me about employees, policies, assets, and tickets</p>
+        </div>
+        
+        <div class="chat-container" id="chatContainer">
+            <div class="message bot-message">
+                <div class="avatar">
+                    <svg viewBox="0 0 40 40" width="40" height="40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="20" cy="20" r="20" fill="#10B981"/>
+                        <rect x="12" y="10" width="16" height="14" rx="2" fill="white"/>
+                        <circle cx="16" cy="16" r="2" fill="#10B981"/>
+                        <circle cx="24" cy="16" r="2" fill="#10B981"/>
+                        <rect x="14" y="20" width="12" height="2" rx="1" fill="#10B981"/>
+                        <rect x="8" y="14" width="3" height="6" rx="1.5" fill="white"/>
+                        <rect x="29" y="14" width="3" height="6" rx="1.5" fill="white"/>
+                        <circle cx="20" cy="30" r="2" fill="white"/>
+                    </svg>
+                </div>
+                <div class="content">
+                    <p>Hello! I'm your company assistant. Ask me anything about employees, policies, assets, and tickets.</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="input-container">
+            <div class="input-wrapper">
+                <input type="text" id="messageInput" placeholder="Ask me anything..." autocomplete="off">
+                <button id="sendButton">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22,2 15,22 11,13 2,9"></polygon>
+                    </svg>
+                </button>
+            </div>
+            <div class="loading" id="loading" style="display: none;">
+                <div class="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <span id="statusMessage">Processing your question...</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
