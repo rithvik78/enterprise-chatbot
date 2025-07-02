@@ -4,12 +4,7 @@ A multi-modal LLM system assistant that helps employees find information about c
 
 ## Setup
 
-1. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. **Configure environment variables:**
+1. **Configure environment variables:**
    Create a `.env` file with:
    ```
    ANTHROPIC_API_KEY=your_anthropic_key
@@ -21,16 +16,12 @@ A multi-modal LLM system assistant that helps employees find information about c
    AIRTABLE_API_KEY=your_airtable_api_key
    ```
 
-3. **Run the application:**
+2. **Run the application:**
    ```bash
-   # Start backend
-   python backend/app.py
-   
-   # Start frontend (in new terminal)
-   cd frontend && python -m http.server 3000
+   ./start_all.sh
    ```
 
-4. **Access the application:**
+3. **Access the application:**
    Open http://localhost:3000 in your browser
 
 ## Requirements
