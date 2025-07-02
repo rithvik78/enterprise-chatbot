@@ -7,13 +7,13 @@ A multi-modal LLM system assistant that helps employees find information about c
 1. **Configure environment variables:**
    Create a `.env` file with:
    ```
-   ANTHROPIC_API_KEY=your_anthropic_key
-   OPENROUTER_API_KEY=your_openrouter_key
+   BASE_ID=your_airtable_base_id
+   AIRTABLE_API_KEY=your_airtable_api_key
    PINECONE_API_KEY=your_pinecone_key
    SUPABASE_URL=your_supabase_url
-   SUPABASE_KEY=your_supabase_key
-   AIRTABLE_BASE_ID=your_airtable_base_id
-   AIRTABLE_API_KEY=your_airtable_api_key
+   SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+   OPENROUTER_API_KEY=your_openrouter_key
+   CLAUDE_API_KEY=your_claude_api_key
    ```
 
 2. **Run the application:**
