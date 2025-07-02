@@ -1420,6 +1420,11 @@ class DocumentSearchSystem:
             stats = self.index.describe_index_stats()
             print(f"   Index has {stats.total_vector_count} total vectors")
             
+            # If index is empty, nothing to clean
+            if stats.total_vector_count == 0:
+                print("   Index is empty, nothing to clean")
+                return
+            
             # Since we can't use regex, we'll scan by prefix
             # Query for vectors that might contain Airtable data
             dummy_vector = [0.1] * 384  # Use a non-zero vector for better results
@@ -1533,6 +1538,14 @@ class DocumentSearchSystem:
             self.process_and_store_documents(documents)
         else:
             print("No new documents to process from Supabase storage.")
+            print("🔄 Forcing document processing regardless of cache...")
+            # Force processing by passing empty cache
+            documents, _ = self.supabase_vector.process_storage_documents({})
+            if documents:
+                print(f"Force processing {len(documents)} documents...")
+                self.process_and_store_documents(documents)
+            else:
+                print("❌ No documents found in Supabase storage")
     
     def fetch_airtable_data(self) -> List[Document]:
         documents = []
@@ -1993,11 +2006,16 @@ Answer:"""
         # Clean any old Airtable vectors from Pinecone to ensure separation
         self.clean_airtable_vectors()
         
-        # Process storage documents silently
+        # Process storage documents with proper error handling
         try:
+            print("📚 Processing documents from Supabase storage...")
             self.process_storage_documents()
-        except:
-            pass  # Silently handle errors
+            print("✅ Document processing completed")
+        except Exception as e:
+            print(f"❌ Error processing documents: {e}")
+            if verbose:
+                import traceback
+                traceback.print_exc()
         
         # NOTE: Airtable data is NOT indexed to Pinecone anymore
         # It's queried live via the Airtable agent for real-time data
