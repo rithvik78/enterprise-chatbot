@@ -910,6 +910,11 @@ class SupabaseVectorManager:
         self.embedder = embedder
         self.supabase = create_client(supabase_url, supabase_key)
         self.bucket = 'documents'
+        self.headers = {
+            'Authorization': f'Bearer {supabase_key}',
+            'Content-Type': 'application/json',
+            'apikey': supabase_key
+        }
     
     def setup_vector_database(self):
         """Check if documents table exists, create if needed"""
@@ -1134,46 +1139,81 @@ $$;""")
             print(f"Error storing document embeddings: {e}")
     
     def process_storage_documents(self):
-        """Download and process all documents from Supabase storage"""
+        """Download and process all documents from Supabase storage recursively"""
         try:
-            # Get list of files in storage
-            storage_url = f'{self.supabase_url}/storage/v1/object/list/documents'
-            response = requests.post(storage_url, headers=self.headers, json={'prefix': '', 'limit': 1000})
-            
-            if response.status_code != 200:
-                print(f"Failed to list storage files: {response.status_code}")
-                return
-            
-            files = response.json()
-            print(f"Found {len(files)} files in storage. Processing...")
-            
-            for file_info in files:
-                if not file_info or not file_info.get('name'):
-                    continue
-                
-                file_name = file_info.get('name', '')
-                print(f"\nProcessing: {file_name}")
-                
-                # Download file content
-                file_content = self.download_file_from_storage(file_name)
-                if not file_content:
-                    continue
-                
-                # Extract text
-                text_content = self.extract_text_from_file(file_content, file_name)
-                
-                if len(text_content.strip()) > 100:  # Only process if we got substantial content
-                    self.store_document_embeddings(
-                        title=file_name,
-                        content=text_content,
-                        source="Supabase Storage",
-                        file_path=file_name
-                    )
-                else:
-                    print(f"Skipping {file_name} - insufficient text content")
-        
+            self._process_folder_recursive("")
         except Exception as e:
             print(f"Error processing storage documents: {e}")
+    
+    def _process_folder_recursive(self, prefix: str):
+        """Recursively process folders and files in Supabase storage"""
+        try:
+            # Get list of files/folders at current level
+            storage_url = f'{self.supabase_url}/storage/v1/object/list/documents'
+            response = requests.post(storage_url, headers=self.headers, json={'prefix': prefix, 'limit': 1000})
+            
+            if response.status_code != 200:
+                print(f"Failed to list storage at '{prefix}': {response.status_code}")
+                return
+            
+            items = response.json()
+            if not items:
+                return
+                
+            print(f"Found {len(items)} items in '{prefix}'")
+            
+            for item_info in items:
+                if not item_info or not item_info.get('name'):
+                    continue
+                
+                item_name = item_info.get('name', '')
+                full_path = f"{prefix}{item_name}" if prefix else item_name
+                
+                # Check if this is a file (has metadata) or folder (no metadata)
+                metadata = item_info.get('metadata')
+                if metadata and metadata.get('size', 0) > 0:
+                    # This is a file - process it
+                    self._process_file(full_path, item_name)
+                else:
+                    # This is likely a folder - recurse into it
+                    print(f"Exploring folder: {full_path}")
+                    self._process_folder_recursive(f"{full_path}/")
+        
+        except Exception as e:
+            print(f"Error processing folder '{prefix}': {e}")
+    
+    def _process_file(self, full_path: str, file_name: str):
+        """Process a single file from storage"""
+        try:
+            print(f"\nProcessing file: {full_path}")
+            
+            # Only process PDF, DOCX, TXT files
+            file_ext = file_name.lower().split('.')[-1] if '.' in file_name else ''
+            if file_ext not in ['pdf', 'docx', 'doc', 'txt']:
+                print(f"Skipping {file_name} - unsupported file type")
+                return
+            
+            # Download file content
+            file_content = self.download_file_from_storage(full_path)
+            if not file_content:
+                return
+            
+            # Extract text
+            text_content = self.extract_text_from_file(file_content, file_name)
+            
+            if len(text_content.strip()) > 100:  # Only process if we got substantial content
+                self.store_document_embeddings(
+                    title=file_name,
+                    content=text_content,
+                    source="Supabase Storage",
+                    file_path=full_path
+                )
+                print(f"✅ Processed {file_name} ({len(text_content)} characters)")
+            else:
+                print(f"Skipping {file_name} - insufficient text content")
+        
+        except Exception as e:
+            print(f"Error processing file '{full_path}': {e}")
     
     def search_similar_documents(self, query: str, limit: int = 10) -> List[Dict]:
         """Search for similar documents using vector similarity"""
@@ -1527,25 +1567,46 @@ class DocumentSearchSystem:
     
     def process_storage_documents(self):
         """Download and process documents from Supabase storage, store in Pinecone"""
-        documents, updated_file_hashes = self.supabase_vector.process_storage_documents(self.processed_files)
+        print("🔄 Processing documents from Supabase storage...")
+        # The SupabaseVectorManager.process_storage_documents() method processes directly to Supabase
+        # We need to call it and then retrieve the processed documents for Pinecone
+        self.supabase_vector.process_storage_documents()
         
-        # Update file hash cache
-        self.processed_files.update(updated_file_hashes)
-        self.save_file_hash_cache()
-        
-        if documents:
-            print(f"Processing {len(documents)} new/modified documents for Pinecone...")
-            self.process_and_store_documents(documents)
-        else:
-            print("No new documents to process from Supabase storage.")
-            print("🔄 Forcing document processing regardless of cache...")
-            # Force processing by passing empty cache
-            documents, _ = self.supabase_vector.process_storage_documents({})
-            if documents:
-                print(f"Force processing {len(documents)} documents...")
+        # After processing, we should get documents from Supabase for Pinecone indexing
+        # For now, let's manually retrieve and process the documents
+        self._retrieve_and_index_documents_for_pinecone()
+
+    def _retrieve_and_index_documents_for_pinecone(self):
+        """Retrieve processed documents from Supabase and index them in Pinecone"""
+        try:
+            # Query the documents from Supabase table
+            response = self.supabase_vector.supabase.table('documents').select('*').execute()
+            
+            if response.data:
+                print(f"Found {len(response.data)} documents in Supabase to index in Pinecone")
+                
+                # Convert Supabase records to Document objects for Pinecone
+                documents = []
+                for record in response.data:
+                    from main import Document
+                    doc = Document(
+                        id=record.get('id', ''),
+                        title=record.get('title', ''),
+                        content=record.get('content', ''),
+                        source=record.get('source', ''),
+                        embedding=None  # Will be generated
+                    )
+                    documents.append(doc)
+                
+                # Index in Pinecone
                 self.process_and_store_documents(documents)
             else:
-                print("❌ No documents found in Supabase storage")
+                print("No documents found in Supabase table")
+                
+        except Exception as e:
+            print(f"Error retrieving documents from Supabase: {e}")
+            import traceback
+            traceback.print_exc()
     
     def fetch_airtable_data(self) -> List[Document]:
         documents = []
@@ -2006,11 +2067,11 @@ Answer:"""
         # Clean any old Airtable vectors from Pinecone to ensure separation
         self.clean_airtable_vectors()
         
-        # Process storage documents with proper error handling
+        # Process storage documents and index to Pinecone
         try:
-            print("📚 Processing documents from Supabase storage...")
-            self.process_storage_documents()
-            print("✅ Document processing completed")
+            print("📚 Processing documents from Supabase storage and indexing to Pinecone...")
+            self._retrieve_and_index_documents_for_pinecone()
+            print("✅ Document processing and indexing completed")
         except Exception as e:
             print(f"❌ Error processing documents: {e}")
             if verbose:
@@ -2019,6 +2080,99 @@ Answer:"""
         
         # NOTE: Airtable data is NOT indexed to Pinecone anymore
         # It's queried live via the Airtable agent for real-time data
+    
+    def _retrieve_and_index_documents_for_pinecone(self):
+        """Retrieve documents from Supabase storage and index them to Pinecone"""
+        try:
+            documents = []
+            
+            # Process folders recursively to get all documents
+            self._collect_documents_recursive("", documents)
+            
+            if documents:
+                print(f"Found {len(documents)} documents, indexing to Pinecone...")
+                self.process_and_store_documents(documents)
+                
+                # Check results
+                stats = self.index.describe_index_stats()
+                print(f"Pinecone index now has: {stats.total_vector_count} vectors")
+            else:
+                print("No documents found to index")
+                
+        except Exception as e:
+            print(f"Error retrieving and indexing documents: {e}")
+            raise
+    
+    def _collect_documents_recursive(self, prefix: str, documents: List[Document]):
+        """Recursively collect documents from Supabase storage for Pinecone indexing"""
+        try:
+            # Get list of files/folders at current level
+            storage_url = f'{self.supabase_vector.supabase_url}/storage/v1/object/list/documents'
+            response = requests.post(storage_url, headers=self.supabase_vector.headers, 
+                                   json={'prefix': prefix, 'limit': 1000})
+            
+            if response.status_code != 200:
+                print(f"Failed to list storage at '{prefix}': {response.status_code}")
+                return
+            
+            items = response.json()
+            if not items:
+                return
+                
+            for item_info in items:
+                if not item_info or not item_info.get('name'):
+                    continue
+                
+                item_name = item_info.get('name', '')
+                full_path = f"{prefix}{item_name}" if prefix else item_name
+                
+                # Check if this is a file (has metadata) or folder (no metadata)
+                metadata = item_info.get('metadata')
+                if metadata and metadata.get('size', 0) > 0:
+                    # This is a file - process it
+                    doc = self._create_document_from_storage(full_path, item_name)
+                    if doc:
+                        documents.append(doc)
+                else:
+                    # This is likely a folder - recurse into it
+                    self._collect_documents_recursive(f"{full_path}/", documents)
+        
+        except Exception as e:
+            print(f"Error collecting documents from '{prefix}': {e}")
+    
+    def _create_document_from_storage(self, full_path: str, file_name: str) -> Optional[Document]:
+        """Create a Document object from a file in Supabase storage"""
+        try:
+            # Only process PDF, DOCX, TXT files
+            file_ext = file_name.lower().split('.')[-1] if '.' in file_name else ''
+            if file_ext not in ['pdf', 'docx', 'doc', 'txt']:
+                return None
+            
+            # Download file content
+            file_content = self.supabase_vector.download_file_from_storage(full_path)
+            if not file_content:
+                return None
+            
+            # Extract text
+            text_content = self.supabase_vector.extract_text_from_file(file_content, file_name)
+            
+            if len(text_content.strip()) > 100:  # Only process if we got substantial content
+                # Create document ID from path
+                doc_id = full_path.replace('/', '_').replace(' ', '_')
+                
+                return Document(
+                    id=doc_id,
+                    title=file_name,
+                    content=text_content,
+                    source="Supabase Storage"
+                )
+            else:
+                print(f"Skipping {file_name} - insufficient text content")
+                return None
+        
+        except Exception as e:
+            print(f"Error creating document from '{full_path}': {e}")
+            return None
     
     def test_retrieval(self, question: str) -> None:
         """Test retrieval system without LLM"""
